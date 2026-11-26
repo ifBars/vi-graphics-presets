@@ -13,6 +13,7 @@ Verified so far:
 - Ten CPU tests pass, including the authored Win64 call-relay test and the complete eight-setting experimental plan.
 - A bounded title dry run found the real visual table and planned changes without writing them.
 - The applying run changed `imposter.trees.SLODDistanceScale` from 1.0 to 0.75. A separate read-only process check confirmed 0.75 in the title's consuming global; the unmodified imposter-distance global remained 1.0.
+- The expanded inspect preset left all eight consumer globals at their original values. The aggressive preset then changed all eight to the values below, confirmed by independent read-only checks of those globals. Its Story rendering and FPS comparison are pending.
 
 The opening Story world renders. The first test had dark surfaces and missing objects, with about 3 FPS reported (1–7 FPS), and stopped at its physical-memory guard. A later run with a smaller runtime render-target reserve completed its time limit; the tester saw substantially fewer dark surfaces and missing objects as the sequence progressed. That run also had a warmer pipeline cache, so neither the rendering change nor a small measured FPS difference can be attributed to the preset alone. Both configurations are preserved locally. Other forks, other game builds, Windows 11, and AMD hardware remain untested. This is not a full Low graphics preset.
 
