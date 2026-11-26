@@ -10,11 +10,11 @@ The first supported build is the Xbox 1.0.2.1 executable, identified by its orig
 
 Verified so far:
 
-- Nine CPU tests pass, including the authored Win64 call-relay test.
+- Ten CPU tests pass, including the authored Win64 call-relay test and the complete eight-setting experimental plan.
 - A bounded title dry run found the real visual table and planned changes without writing them.
 - The applying run changed `imposter.trees.SLODDistanceScale` from 1.0 to 0.75. A separate read-only process check confirmed 0.75 in the title's consuming global; the unmodified imposter-distance global remained 1.0.
 
-The opening Story world renders, but the local test still had dark surfaces and missing objects. The tester reported about 3 FPS, ranging from 1–7 FPS. The run stopped at its physical-memory guard. No FPS improvement from the preset has been established. Other forks, other game builds, Windows 11, and AMD hardware remain untested. This is not a full Low graphics preset.
+The opening Story world renders. The first test had dark surfaces and missing objects, with about 3 FPS reported (1–7 FPS), and stopped at its physical-memory guard. A later run with a smaller runtime render-target reserve completed its time limit; the tester saw substantially fewer dark surfaces and missing objects as the sequence progressed. That run also had a warmer pipeline cache, so neither the rendering change nor a small measured FPS difference can be attributed to the preset alone. Both configurations are preserved locally. Other forks, other game builds, Windows 11, and AMD hardware remain untested. This is not a full Low graphics preset.
 
 ## Presets
 
@@ -23,6 +23,8 @@ The opening Story world renders, but the local test still had dark surfaces and 
 | `inspect-tree-distance.json` | Plans both tree-distance changes and logs them, with no table writes. |
 | `smoke-tree-distance.json` | Multiplies tree SLOD distance by 0.75. |
 | `low-tree-distance.json` | Multiplies tree SLOD and imposter distances by 0.75. |
+| `inspect-aggressive-distance.json` | Plans the eight experimental changes below without table writes. |
+| `aggressive-distance.json` | Multiplies eight distance and coverage settings by 0.5. Experimental; workload reduction is unverified. |
 
 For example:
 
@@ -37,7 +39,20 @@ For example:
 }
 ```
 
-Version 1 accepts only the two tree keys above, with finite multipliers from 0.25 through 1.0. The multiplier applies to the effective platform value. Unsupported keys and ambiguous or missing rows reject the complete plan. Terrain, grass, water, shadow and fog parameters have been found in the title data, but need their own semantics and runtime checks before they join this allowlist.
+Version 1 accepts the following keys, with finite multipliers from 0.25 through 1.0. The multiplier applies to the effective platform value. Unsupported keys and ambiguous or missing rows reject the complete plan.
+
+| Key | Shared default → aggressive value | Scope |
+| --- | --- | --- |
+| `imposter.trees.imposterDistScale` | 1 → 0.5 | Tree imposter distance scale. |
+| `imposter.trees.SLODDistanceScale` | 1 → 0.5 | Tree SLOD distance scale. |
+| `terrain.approximate_vegetation.distance_max` | 50 → 25 | Approximate terrain vegetation fade. |
+| `terrain.approximate_vegetation.grass.distance_max` | 20 → 10 | Approximate terrain grass fade. |
+| `tessellation.water.near` | 52 → 26 | Water tessellation threshold; paired with `far`. |
+| `tessellation.water.far` | 55 → 27.5 | Water tessellation threshold; paired with `near`. |
+| `misc.fog.distance_coverage` | 22,000 → 11,000 | Fog renderer coverage constants. |
+| `lights.cutoff.volumetric.distance` | 1,003 → 501.5 | Default volumetric light cutoff; individual lights may override it. |
+
+These keys have traced scalar consumers in the supported executable. Vegetation fades affect approximate terrain rendering, rather than all vegetation. Moving water thresholds or reducing fog coverage may change appearance without reducing work. Keep the authored water pair together. Check the log for actual values: platform rows can differ from these shared defaults. Shadow settings and terrain geometry transitions remain outside the allowlist.
 
 ## Build and run
 

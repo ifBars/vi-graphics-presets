@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "aggressive-distance-experimental",
+  "dry_run": false,
+  "settings": [
+    { "key": "imposter.trees.imposterDistScale", "multiply": 0.5 },
+    { "key": "imposter.trees.SLODDistanceScale", "multiply": 0.5 },
+    { "key": "terrain.approximate_vegetation.distance_max", "multiply": 0.5 },
+    { "key": "terrain.approximate_vegetation.grass.distance_max", "multiply": 0.5 },
+    { "key": "tessellation.water.near", "multiply": 0.5 },
+    { "key": "tessellation.water.far", "multiply": 0.5 },
+    { "key": "misc.fog.distance_coverage", "multiply": 0.5 },
+    { "key": "lights.cutoff.volumetric.distance", "multiply": 0.5 }
+  ]
+}

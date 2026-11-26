@@ -7,6 +7,12 @@ const MAX_SETTINGS: usize = 16;
 const ALLOWED_KEYS: &[&str] = &[
     "imposter.trees.imposterDistScale",
     "imposter.trees.SLODDistanceScale",
+    "terrain.approximate_vegetation.distance_max",
+    "terrain.approximate_vegetation.grass.distance_max",
+    "tessellation.water.near",
+    "tessellation.water.far",
+    "misc.fog.distance_coverage",
+    "lights.cutoff.volumetric.distance",
 ];
 
 /// One float entry from the runtime settings table.
@@ -244,6 +250,8 @@ mod tests {
     const SMOKE: &str = include_str!("../presets/smoke-tree-distance.json");
     const LOW: &str = include_str!("../presets/low-tree-distance.json");
     const INSPECT: &str = include_str!("../presets/inspect-tree-distance.json");
+    const AGGRESSIVE: &str = include_str!("../presets/aggressive-distance.json");
+    const INSPECT_AGGRESSIVE: &str = include_str!("../presets/inspect-aggressive-distance.json");
 
     fn row(hash: u32, value: f32) -> RawRow {
         RawRow { hash, value }
@@ -351,5 +359,46 @@ mod tests {
             plan(&inspect, &rows, Platform::SeriesX).unwrap(),
             plan(&low, &rows, Platform::SeriesX).unwrap()
         );
+    }
+
+    #[test]
+    fn aggressive_presets_plan_the_same_eight_changes_and_require_every_row() {
+        let cases = [
+            (IMPOSTER, 1.0, 0.5),
+            (SLOD, 1.0, 0.5),
+            ("terrain.approximate_vegetation.distance_max", 50.0, 25.0),
+            (
+                "terrain.approximate_vegetation.grass.distance_max",
+                20.0,
+                10.0,
+            ),
+            ("tessellation.water.near", 52.0, 26.0),
+            ("tessellation.water.far", 55.0, 27.5),
+            ("misc.fog.distance_coverage", 22_000.0, 11_000.0),
+            ("lights.cutoff.volumetric.distance", 1_003.0, 501.5),
+        ];
+        let rows = cases.map(|(key, before, _)| row(hash_key(key), before));
+        let expected: Vec<_> = cases
+            .into_iter()
+            .enumerate()
+            .map(|(index, (key, before, after))| Change {
+                index,
+                key: key.to_owned(),
+                hash: hash_key(key),
+                before,
+                after,
+                selection: Selection::Base,
+            })
+            .collect();
+
+        for (json, dry_run) in [(AGGRESSIVE, false), (INSPECT_AGGRESSIVE, true)] {
+            let preset = parse_preset(json).unwrap();
+            assert_eq!(preset.dry_run, dry_run);
+            assert_eq!(plan(&preset, &rows, Platform::SeriesS).unwrap(), expected);
+            assert!(matches!(
+                plan(&preset, &rows[..rows.len() - 1], Platform::SeriesS),
+                Err(PresetError::MissingRow(key)) if key == "lights.cutoff.volumetric.distance"
+            ));
+        }
     }
 }
