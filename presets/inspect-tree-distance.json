@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "id": "inspect-tree-distance",
+  "dry_run": true,
+  "settings": [
+    {
+      "key": "imposter.trees.SLODDistanceScale",
+      "multiply": 0.75
+    },
+    {
+      "key": "imposter.trees.imposterDistScale",
+      "multiply": 0.75
+    }
+  ]
+}
