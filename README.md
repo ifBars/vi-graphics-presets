@@ -14,7 +14,7 @@ Verified so far:
 - A bounded title dry run found the real visual table and planned changes without writing them.
 - The applying run changed `imposter.trees.SLODDistanceScale` from 1.0 to 0.75. A separate read-only process check confirmed 0.75 in the title's consuming global; the unmodified imposter-distance global remained 1.0.
 
-Story rendering, performance gains, other forks, other game builds, Windows 11, and AMD hardware are not yet validated for this plugin. The settings path is working; this is not a full Low graphics preset or a claim of higher FPS.
+The opening Story world renders, but the local test still had dark surfaces and missing objects. The tester reported about 3 FPS, ranging from 1–7 FPS. The run stopped at its physical-memory guard. No FPS improvement from the preset has been established. Other forks, other game builds, Windows 11, and AMD hardware remain untested. This is not a full Low graphics preset.
 
 ## Presets
 
