@@ -1,0 +1,198 @@
+diff --git a/runtime/victory/crates/victory-loader/src/graphics_preset.rs b/runtime/victory/crates/victory-loader/src/graphics_preset.rs
+new file mode 100644
+index 0000000..19d9410
+--- /dev/null
++++ b/runtime/victory/crates/victory-loader/src/graphics_preset.rs
+@@ -0,0 +1,158 @@
++//! Opt-in adapter for the graphics preset plugin, installed before title code runs.
++
++use std::ffi::OsString;
++use std::os::windows::ffi::OsStrExt;
++use std::path::{Path, PathBuf};
++
++use anyhow::{Context, Result, bail};
++use windows_sys::Win32::System::LibraryLoader::{
++    GetProcAddress, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
++    LoadLibraryExW,
++};
++
++const DLL_ENV: &str = "VICTORY_GRAPHICS_PRESET_DLL";
++const PRESET_ENV: &str = "VICTORY_GRAPHICS_PRESET";
++const LOG_ENV: &str = "VICTORY_GRAPHICS_PRESET_LOG";
++
++struct Paths {
++    dll: PathBuf,
++    preset: PathBuf,
++    log: PathBuf,
++}
++
++impl Paths {
++    fn parse(
++        dll: Option<OsString>,
++        preset: Option<OsString>,
++        log: Option<OsString>,
++    ) -> Result<Option<Self>> {
++        match (dll, preset, log) {
++            (None, None, None) => Ok(None),
++            (Some(dll), Some(preset), Some(log)) => Ok(Some(Self {
++                dll: absolute_path(dll, DLL_ENV)?,
++                preset: absolute_path(preset, PRESET_ENV)?,
++                log: absolute_path(log, LOG_ENV)?,
++            })),
++            _ => bail!("set {DLL_ENV}, {PRESET_ENV}, and {LOG_ENV} together"),
++        }
++    }
++}
++
++fn absolute_path(value: OsString, env: &str) -> Result<PathBuf> {
++    let path = PathBuf::from(value);
++    if !path.is_absolute() || path.as_os_str().encode_wide().any(|unit| unit == 0) {
++        bail!("{env} must be an absolute path");
++    }
++    Ok(path)
++}
++
++fn wide(path: &Path) -> Vec<u16> {
++    path.as_os_str().encode_wide().chain(Some(0)).collect()
++}
++
++type InstallV1 =
++    unsafe extern "system" fn(usize, u32, *const u8, usize, *const u16, *const u16) -> u32;
++
++/// Installs the preset plugin if requested, returning an error on any installation failure.
++///
++/// # Safety
++/// The image must describe the mapped main title, and no title code may have run yet.
++pub(crate) unsafe fn install(base: usize, size: u32, hash: &blake3::Hash) -> Result<()> {
++    let Some(paths) = Paths::parse(
++        std::env::var_os(DLL_ENV),
++        std::env::var_os(PRESET_ENV),
++        std::env::var_os(LOG_ENV),
++    )?
++    else {
++        return Ok(());
++    };
++
++    let dll = paths
++        .dll
++        .canonicalize()
++        .with_context(|| format!("resolving graphics preset DLL {}", paths.dll.display()))?;
++    if !dll.is_file() {
++        bail!("graphics preset DLL is not a file: {}", dll.display());
++    }
++
++    let dll_path = wide(&dll);
++    // SAFETY: the DLL path is absolute and NUL-terminated. The reference from
++    // LoadLibraryExW stays live until process exit, including if a plugin reports
++    // an installation error after making a hook.
++    let module = unsafe {
++        LoadLibraryExW(
++            dll_path.as_ptr(),
++            std::ptr::null_mut(),
++            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS,
++        )
++    };
++    if module.is_null() {
++        bail!(
++            "loading graphics preset DLL {}: {}",
++            dll.display(),
++            std::io::Error::last_os_error()
++        );
++    }
++
++    // SAFETY: module is loaded and the export name is NUL-terminated.
++    let entry = unsafe { GetProcAddress(module, c"gp_install_v1".as_ptr().cast()) }
++        .with_context(|| format!("graphics preset DLL {} lacks gp_install_v1", dll.display()))?;
++    // SAFETY: gp_install_v1 is the plugin's versioned entry point with this ABI.
++    let install: InstallV1 = unsafe { std::mem::transmute(entry) };
++    let hash = hash.to_hex();
++    let preset_path = wide(&paths.preset);
++    let log_path = wide(&paths.log);
++    // SAFETY: the image is mapped and idle by the caller's contract. Both paths
++    // are NUL-terminated and all borrowed buffers live through the call.
++    let status = unsafe {
++        install(
++            base,
++            size,
++            hash.as_bytes().as_ptr(),
++            hash.len(),
++            preset_path.as_ptr(),
++            log_path.as_ptr(),
++        )
++    };
++    if status != 0 {
++        bail!(
++            "graphics preset installation failed with status {status} from {}",
++            dll.display()
++        );
++    }
++    tracing::info!(dll = %dll.display(), preset = %paths.preset.display(), "graphics preset plugin installed");
++    Ok(())
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn all_absent_disables_graphics_preset() {
++        assert!(Paths::parse(None, None, None).unwrap().is_none());
++    }
++
++    #[test]
++    fn partial_configuration_is_rejected() {
++        let path = Some(OsString::from(r"D:\presets\plugin.dll"));
++        assert!(Paths::parse(None, path.clone(), path.clone()).is_err());
++        assert!(Paths::parse(path.clone(), None, path.clone()).is_err());
++        assert!(Paths::parse(path.clone(), path, None).is_err());
++    }
++
++    #[test]
++    fn supplied_paths_must_be_absolute() {
++        let dll = Some(OsString::from(r"D:\presets\plugin.dll"));
++        let preset = Some(OsString::from(r"D:\presets\balanced.json"));
++        let log = Some(OsString::from(r"D:\runs\preset.jsonl"));
++        assert!(
++            Paths::parse(dll.clone(), preset.clone(), log.clone())
++                .unwrap()
++                .is_some()
++        );
++        assert!(Paths::parse(Some("plugin.dll".into()), preset.clone(), log.clone()).is_err());
++        assert!(Paths::parse(dll.clone(), Some(r"D:preset.json".into()), log).is_err());
++        assert!(Paths::parse(dll, preset, Some("".into())).is_err());
++    }
++}
+diff --git a/runtime/victory/crates/victory-loader/src/lib.rs b/runtime/victory/crates/victory-loader/src/lib.rs
+index 187276d..00cda70 100644
+--- a/runtime/victory/crates/victory-loader/src/lib.rs
++++ b/runtime/victory/crates/victory-loader/src/lib.rs
+@@ -25,6 +25,8 @@
+ mod console_insn;
+ mod crash;
+ #[cfg(windows)]
++mod graphics_preset;
++#[cfg(windows)]
+ mod hooks;
+ pub mod prepare;
+ pub mod resolve;
+diff --git a/runtime/victory/crates/victory-loader/src/windows.rs b/runtime/victory/crates/victory-loader/src/windows.rs
+index e63d7d3..674ba07 100644
+--- a/runtime/victory/crates/victory-loader/src/windows.rs
++++ b/runtime/victory/crates/victory-loader/src/windows.rs
+@@ -99,6 +99,16 @@ pub fn load(prepared: &PreparedImage, dir: &Path) -> Result<LoadedImage> {
+             crate::hooks::OWN_UPSCALER_ENV
+         );
+     }
++    if !loaded.info.is_dll() {
++        // SAFETY: just mapped, and no title code has run.
++        unsafe {
++            crate::graphics_preset::install(
++                loaded.base(),
++                loaded.info.size_of_image,
++                &prepared.original_hash,
++            )
++        }?;
++    }
+     // Native replacements last, over the relocated and hooked image.
+     // SAFETY: just mapped, and no title code has run.
+     let native = unsafe {
